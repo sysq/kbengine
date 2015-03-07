@@ -18,9 +18,9 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "baseapp.hpp"
-#include "backuper.hpp"
-#include "server/serverconfig.hpp"
+#include "baseapp.h"
+#include "backuper.h"
+#include "server/serverconfig.h"
 
 namespace KBEngine{	
 float backupPeriod = 0.0;
@@ -61,7 +61,6 @@ void Backuper::tick()
 		this->createBackupTable();
 	}
 
-	Mercury::Bundle bundle;
 	while((numToBackUp > 0) && !backupEntityIDs_.empty())
 	{
 		Base * pBase = Baseapp::getSingleton().findEntity(backupEntityIDs_.back());
@@ -71,8 +70,8 @@ void Backuper::tick()
 		if (pBase && backup(*pBase, *s))
 		{
 			--numToBackUp;
-			bundle.append(*s);
 		}
+
 		MemoryStream::ObjPool().reclaimObject(s);
 	}
 }
@@ -96,7 +95,7 @@ void Backuper::createBackupTable()
 
 	Entities<Base>::ENTITYS_MAP::const_iterator iter = Baseapp::getSingleton().pEntities()->getEntities().begin();
 
-	for(; iter != Baseapp::getSingleton().pEntities()->getEntities().end(); iter++)
+	for(; iter != Baseapp::getSingleton().pEntities()->getEntities().end(); ++iter)
 	{
 		Base* pBase = static_cast<Base*>(iter->second.get());
 

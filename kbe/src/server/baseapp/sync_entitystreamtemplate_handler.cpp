@@ -18,25 +18,25 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "baseapp.hpp"
-#include "sync_entitystreamtemplate_handler.hpp"
-#include "entitydef/scriptdef_module.hpp"
-#include "entitydef/entity_macro.hpp"
-#include "network/fixed_messages.hpp"
-#include "math/math.hpp"
-#include "network/bundle.hpp"
-#include "network/channel.hpp"
+#include "baseapp.h"
+#include "sync_entitystreamtemplate_handler.h"
+#include "entitydef/scriptdef_module.h"
+#include "entitydef/entity_macro.h"
+#include "network/fixed_messages.h"
+#include "math/math.h"
+#include "network/bundle.h"
+#include "network/channel.h"
 
-#include "../../server/dbmgr/dbmgr_interface.hpp"
+#include "../../server/dbmgr/dbmgr_interface.h"
 
 namespace KBEngine{	
 
 //-------------------------------------------------------------------------------------
-SyncEntityStreamTemplateHandler::SyncEntityStreamTemplateHandler(Mercury::NetworkInterface & networkInterface):
+SyncEntityStreamTemplateHandler::SyncEntityStreamTemplateHandler(Network::NetworkInterface & networkInterface):
 Task(),
 networkInterface_(networkInterface)
 {
-	networkInterface.mainDispatcher().addFrequentTask(this);
+	networkInterface.dispatcher().addTask(this);
 
 	MemoryStream accountDefMemoryStream;
 
@@ -54,7 +54,7 @@ networkInterface_(networkInterface)
 			ADD_POSDIR_TO_STREAM(accountDefMemoryStream, pos, dir);
 		}
 
-		for(; iter != propertyDescrs.end(); iter++)
+		for(; iter != propertyDescrs.end(); ++iter)
 		{
 			PropertyDescription* propertyDescription = iter->second;
 			accountDefMemoryStream << propertyDescription->getUType();
@@ -66,7 +66,7 @@ networkInterface_(networkInterface)
 //-------------------------------------------------------------------------------------
 SyncEntityStreamTemplateHandler::~SyncEntityStreamTemplateHandler()
 {
-	// networkInterface_.mainDispatcher().cancelFrequentTask(this);
+	// networkInterface_.dispatcher().cancelTask(this);
 	DEBUG_MSG("SyncEntityStreamTemplateHandler::~SyncEntityStreamTemplateHandler()\n");
 }
 
@@ -74,7 +74,7 @@ SyncEntityStreamTemplateHandler::~SyncEntityStreamTemplateHandler()
 bool SyncEntityStreamTemplateHandler::process()
 {
 	Components::COMPONENTS& cts = Components::getSingleton().getComponents(DBMGR_TYPE);
-	Mercury::Channel* pChannel = NULL;
+	Network::Channel* pChannel = NULL;
 
 	if(cts.size() > 0)
 	{
@@ -108,18 +108,18 @@ bool SyncEntityStreamTemplateHandler::process()
 		ADD_POSDIR_TO_STREAM(accountDefMemoryStream, pos, dir);
 	}
 
-	for(; iter != propertyDescrs.end(); iter++)
+	for(; iter != propertyDescrs.end(); ++iter)
 	{
 		PropertyDescription* propertyDescription = iter->second;
 		accountDefMemoryStream << propertyDescription->getUType();
 		propertyDescription->addPersistentToStream(&accountDefMemoryStream, NULL);
 	}
 
-	Mercury::Bundle::SmartPoolObjectPtr bundleptr = Mercury::Bundle::createSmartPoolObj();
+	Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
 
-	(*bundleptr)->newMessage(DbmgrInterface::syncEntityStreamTemplate);
-	(*bundleptr)->append(accountDefMemoryStream);
-	(*bundleptr)->send(networkInterface_, pChannel);
+	(*pBundle).newMessage(DbmgrInterface::syncEntityStreamTemplate);
+	(*pBundle).append(accountDefMemoryStream);
+	pChannel->send(pBundle);
 	delete this;
 	return false;
 }

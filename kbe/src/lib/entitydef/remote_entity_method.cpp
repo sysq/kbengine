@@ -19,10 +19,10 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "method.hpp"
-#include "remote_entity_method.hpp"
-#include "network/bundle.hpp"
-#include "helper/debug_helper.hpp"
+#include "method.h"
+#include "remote_entity_method.h"
+#include "network/bundle.h"
+#include "helper/debug_helper.h"
 
 namespace KBEngine{
 
@@ -65,11 +65,11 @@ PyObject* RemoteEntityMethod::tp_call(PyObject* self, PyObject* args,
 	RemoteEntityMethod* rmethod = static_cast<RemoteEntityMethod*>(self);
 	MethodDescription* methodDescription = rmethod->getDescription();
 	EntityMailboxAbstract* mailbox = rmethod->getMailbox();
-	// DEBUG_MSG(boost::format("RemoteEntityMethod::tp_call:%1%.\n") % methodDescription->getName());
+	// DEBUG_MSG(fmt::format("RemoteEntityMethod::tp_call:{}.\n"), methodDescription->getName()));
 
 	if(methodDescription->checkArgs(args))
 	{
-		Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
+		Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
 		mailbox->newMail((*pBundle));
 
 		MemoryStream mstream;
@@ -78,13 +78,12 @@ PyObject* RemoteEntityMethod::tp_call(PyObject* self, PyObject* args,
 		if(mstream.wpos() > 0)
 			(*pBundle).append(mstream.data(), mstream.wpos());
 
-		mailbox->postMail((*pBundle));
-		Mercury::Bundle::ObjPool().reclaimObject(pBundle);
+		mailbox->postMail(pBundle);
 	}
 	else
 	{
-        ERROR_MSG(boost::format("RemoteEntityMethod::tp_call:%1% checkArgs is error!\n") %
-                methodDescription->getName());
+        ERROR_MSG(fmt::format("RemoteEntityMethod::tp_call:{} checkArgs is error!\n",
+                methodDescription->getName()));
 	}
 
 	S_Return;

@@ -18,21 +18,21 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-
-#include "fixedarray.hpp"
-#include "datatypes.hpp"
+#include "fixedarray.h"
+#include "datatypes.h"
+#include "pyscript/py_gc.h"
 
 namespace KBEngine{ 
 
 SCRIPT_METHOD_DECLARE_BEGIN(FixedArray)
-SCRIPT_METHOD_DECLARE("__reduce_ex__",		reduce_ex__,	METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("append",				append,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("count",				count,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("extend",				extend,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("index",				index,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("insert",				insert,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("pop",				pop,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("remove",				remove,			METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("__reduce_ex__",				reduce_ex__,			METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("append",						append,					METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("count",						count,					METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("extend",						extend,					METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("index",						index,					METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("insert",						insert,					METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("pop",						pop,					METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("remove",						remove,					METH_VARARGS, 0)
 SCRIPT_METHOD_DECLARE_END()
 
 
@@ -51,7 +51,9 @@ Sequence(getScriptType(), false)
 	_dataType->incRef();
 	initialize(strInitData);
 
-//	DEBUG_MSG(boost::format("FixedArray::FixedArray(): %1%\n") % this);
+	script::PyGC::incTracing("FixedArray");
+
+//	DEBUG_MSG(fmt::format("FixedArray::FixedArray(): {:p}\n", this));
 }
 
 //-------------------------------------------------------------------------------------
@@ -62,7 +64,9 @@ Sequence(getScriptType(), false)
 	_dataType->incRef();
 	initialize(pyInitData);
 
-//	DEBUG_MSG(boost::format("FixedArray::FixedArray(): %1%\n") % this);
+	script::PyGC::incTracing("FixedArray");
+
+//	DEBUG_MSG(fmt::format("FixedArray::FixedArray(): {:p}\n", this));
 }
 
 //-------------------------------------------------------------------------------------
@@ -73,7 +77,9 @@ Sequence(getScriptType(), false)
 	_dataType->incRef();
 	initialize("");
 
-//	DEBUG_MSG(boost::format("FixedArray::FixedArray(): %1%\n") % this);
+	script::PyGC::incTracing("FixedArray");
+
+//	DEBUG_MSG(fmt::format("FixedArray::FixedArray(): {:p}\n", this));
 }
 
 //-------------------------------------------------------------------------------------
@@ -81,7 +87,9 @@ FixedArray::~FixedArray()
 {
 	_dataType->decRef();
 
-//	DEBUG_MSG(boost::format("FixedArray::~FixedArray(): %1%\n") % this);
+	script::PyGC::decTracing("FixedArray");
+
+//	DEBUG_MSG(fmt::format("FixedArray::~FixedArray(): {:p}\n", this));
 }
 
 //-------------------------------------------------------------------------------------
@@ -101,7 +109,7 @@ void FixedArray::initialize(PyObject* pyObjInitData)
 	}
 
 	 Py_ssize_t size = PySequence_Size(pyObjInitData);
-	 for(Py_ssize_t i=0; i<size; i++)
+	 for(Py_ssize_t i=0; i<size; ++i)
 	 {
 		 PyObject* pyobj = PySequence_GetItem(pyObjInitData, i);
 		 values_.push_back(_dataType->createNewItemFromObj(pyobj));
@@ -123,7 +131,7 @@ PyObject* FixedArray::__py_reduce_ex__(PyObject* self, PyObject* protocol)
 	if(len > 0)
 	{
 		std::vector<PyObject*>& values = arr->getValues();
-		for(int i=0; i<len; i++)
+		for(int i=0; i<len; ++i)
 		{
 			Py_INCREF(values[i]);
 			PyList_SET_ITEM(pyList, i, values[i]);
@@ -297,6 +305,30 @@ PyObject* FixedArray::__py_remove(PyObject* self, PyObject* args, PyObject* kwar
 
 	PyObject* pyTuple = PyTuple_New(0);
 	return PyBool_FromLong(seq_ass_slice(self, index, index + 1, &*pyTuple) == 0);
+}
+
+//-------------------------------------------------------------------------------------
+PyObject* FixedArray::tp_str()
+{
+	return tp_repr();
+}
+
+//-------------------------------------------------------------------------------------
+PyObject* FixedArray::tp_repr()
+{
+	std::vector<PyObject*>& values = getValues();
+	PyObject* pyList = PyList_New(values.size());
+	
+	for(size_t i=0; i<values.size(); ++i)
+	{
+		Py_INCREF(values[i]);
+		PyList_SET_ITEM(pyList, i, values[i]);
+	}
+
+	PyObject* pyStr = PyObject_Repr(pyList);
+	Py_DECREF(pyList);
+
+	return pyStr;
 }
 
 //-------------------------------------------------------------------------------------

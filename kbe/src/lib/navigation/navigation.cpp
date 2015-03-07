@@ -18,12 +18,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "navigation.hpp"
-#include "resmgr/resmgr.hpp"
-#include "thread/threadguard.hpp"
+#include "navigation.h"
+#include "resmgr/resmgr.h"
+#include "thread/threadguard.h"
 
-#include "navigation_tile_handle.hpp"
-#include "navigation_mesh_handle.hpp"
+#include "navigation_tile_handle.h"
+#include "navigation_mesh_handle.h"
 
 namespace KBEngine{
 
@@ -41,7 +41,7 @@ Navigation::~Navigation()
 {
 	KBEngine::thread::ThreadGuard tg(&mutex_); 
 	KBEUnordered_map<std::string, NavigationHandlePtr>::iterator iter = navhandles_.begin();
-	for(; iter != navhandles_.end(); iter++)
+	for(; iter != navhandles_.end(); ++iter)
 	{
 		iter->second->decRef();
 	}
@@ -59,7 +59,7 @@ bool Navigation::removeNavigation(std::string name)
 		navhandles_.erase(iter);
 		iter->second->decRef();
 
-		DEBUG_MSG(boost::format("Navigation::removeNavigation: (%1%) is destroyed!\n") % name);
+		DEBUG_MSG(fmt::format("Navigation::removeNavigation: ({}) is destroyed!\n", name));
 		return true;
 	}
 
@@ -81,7 +81,7 @@ NavigationHandlePtr Navigation::findNavigation(std::string name)
 		{
 			// 由于tile需要做碰撞， 每一个space都需要一份新的数据， 我们这里采用拷贝的方式来增加构造速度
 			NavTileHandle* pNavTileHandle = new NavTileHandle(*(KBEngine::NavTileHandle*)iter->second.get());
-			DEBUG_MSG(boost::format("Navigation::findNavigation: copy NavTileHandle(%1%)!\n") % pNavTileHandle);
+			DEBUG_MSG(fmt::format("Navigation::findNavigation: copy NavTileHandle({:p})!\n", (void*)pNavTileHandle));
 			return NavigationHandlePtr(pNavTileHandle);
 		}
 

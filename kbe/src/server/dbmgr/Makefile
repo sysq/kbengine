@@ -1,11 +1,10 @@
 BIN  = dbmgr
 SRCS =						\
-	billinghandler				\
+	buffered_dbtasks			\
 	dbmgr					\
 	dbmgr_interface				\
 	dbtasks					\
-	db_threadpool				\
-	buffered_dbtasks			\
+	interfaces_handler			\
 	main					\
 	sync_app_datas_handler
 
@@ -17,7 +16,7 @@ MY_LIBS =		\
 	pyscript	\
 	network		\
 	thread		\
-	dbmgr_lib	\
+	db_interface	\
 	db_mysql
 
 BUILD_TIME_FILE = main

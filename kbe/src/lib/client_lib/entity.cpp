@@ -19,19 +19,20 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "clientapp.hpp"
-#include "entity.hpp"
-#include "clientobjectbase.hpp"
-#include "entitydef/entity_mailbox.hpp"
-#include "network/channel.hpp"	
-#include "network/bundle.hpp"	
-#include "network/fixed_messages.hpp"
+#include "clientapp.h"
+#include "entity.h"
+#include "clientobjectbase.h"
+#include "entitydef/entity_mailbox.h"
+#include "network/channel.h"	
+#include "network/bundle.h"	
+#include "network/fixed_messages.h"
+#include "pyscript/py_gc.h"
 
-#include "../../../server/baseapp/baseapp_interface.hpp"
-#include "../../../server/cellapp/cellapp_interface.hpp"
+#include "../../../server/baseapp/baseapp_interface.h"
+#include "../../../server/cellapp/cellapp_interface.h"
 
 #ifndef CODE_INLINE
-#include "entity.ipp"
+#include "entity.inl"
 #endif
 
 namespace KBEngine{
@@ -39,20 +40,20 @@ namespace client
 {
 
 //-------------------------------------------------------------------------------------
-ENTITY_METHOD_DECLARE_BEGIN(ClientApp, Entity)
-ENTITY_METHOD_DECLARE_END()
+CLIENT_ENTITY_METHOD_DECLARE_BEGIN(ClientApp, Entity)
+CLIENT_ENTITY_METHOD_DECLARE_END()
 
 SCRIPT_MEMBER_DECLARE_BEGIN(Entity)
 SCRIPT_MEMBER_DECLARE_END()
 
-ENTITY_GETSET_DECLARE_BEGIN(Entity)
+CLIENT_ENTITY_GETSET_DECLARE_BEGIN(Entity)
 SCRIPT_GET_DECLARE("base",							pyGetBaseMailbox,				0,					0)
 SCRIPT_GET_DECLARE("cell",							pyGetCellMailbox,				0,					0)
 SCRIPT_GET_DECLARE("clientapp",						pyGetClientApp	,				0,					0)
 SCRIPT_GETSET_DECLARE("position",					pyGetPosition,					pySetPosition,		0,		0)
 SCRIPT_GETSET_DECLARE("direction",					pyGetDirection,					pySetDirection,		0,		0)
 SCRIPT_GETSET_DECLARE("velocity",					pyGetMoveSpeed,					pySetMoveSpeed,		0,		0)
-ENTITY_GETSET_DECLARE_END()
+CLIENT_ENTITY_GETSET_DECLARE_END()
 BASE_SCRIPT_INIT(Entity, 0, 0, 0, 0, 0)	
 	
 //-------------------------------------------------------------------------------------
@@ -67,23 +68,44 @@ direction_(),
 pClientApp_(NULL),
 aspect_(id),
 velocity_(3.0f),
-enterword_(false),
+enterworld_(false),
 isOnGound_(true)
 {
 	ENTITY_INIT_PROPERTYS(Entity);
+	script::PyGC::incTracing("Entity");
 }
 
 //-------------------------------------------------------------------------------------
 Entity::~Entity()
 {
-	enterword_ = false;
+	enterworld_ = false;
 	ENTITY_DECONSTRUCTION(Entity);
+	S_RELEASE(cellMailbox_);
+	S_RELEASE(baseMailbox_);
+
+	script::PyGC::decTracing("Entity");
+	
+	if(pClientApp_->pEntities())
+		pClientApp_->pEntities()->pGetbages()->erase(id());
+
+	Py_DECREF(pClientApp_);
 }	
+
+//-------------------------------------------------------------------------------------
+void Entity::pClientApp(ClientObjectBase* p)
+{ 
+	if(p)
+		Py_INCREF(p);
+	else
+		Py_DECREF(pClientApp_);
+
+	pClientApp_ = p; 
+}
 
 //-------------------------------------------------------------------------------------
 PyObject* Entity::pyGetBaseMailbox()
 { 
-	EntityMailbox* mailbox = getBaseMailbox();
+	EntityMailbox* mailbox = baseMailbox();
 	if(mailbox == NULL)
 		S_Return;
 
@@ -94,7 +116,7 @@ PyObject* Entity::pyGetBaseMailbox()
 //-------------------------------------------------------------------------------------
 PyObject* Entity::pyGetCellMailbox()
 { 
-	EntityMailbox* mailbox = getCellMailbox();
+	EntityMailbox* mailbox = cellMailbox();
 	if(mailbox == NULL)
 		S_Return;
 
@@ -114,12 +136,19 @@ PyObject* Entity::pyGetClientApp()
 }
 
 //-------------------------------------------------------------------------------------
+PyObject* Entity::onScriptGetAttribute(PyObject* attr)
+{
+	DEBUG_OP_ATTRIBUTE("get", attr)
+	return ScriptObject::onScriptGetAttribute(attr);
+}	
+
+//-------------------------------------------------------------------------------------
 void Entity::onDefDataChanged(const PropertyDescription* propertyDescription, PyObject* pyData)
 {
 }
 
 //-------------------------------------------------------------------------------------
-void Entity::onRemoteMethodCall(Mercury::Channel* pChannel, MemoryStream& s)
+void Entity::onRemoteMethodCall(Network::Channel* pChannel, MemoryStream& s)
 {
 	ENTITY_METHOD_UID utype = 0;
 	
@@ -140,14 +169,17 @@ void Entity::onRemoteMethodCall(Mercury::Channel* pChannel, MemoryStream& s)
 
 	if(md == NULL)
 	{
-		ERROR_MSG(boost::format("Entity::onRemoteMethodCall: can't found method. utype=%1%, callerID:%2%.\n") % 
-			utype % id_);
+		ERROR_MSG(fmt::format("Entity::onRemoteMethodCall: can't found method. utype={}, callerID:{}.\n", 
+			utype, id_));
 
 		return;
 	}
 
-	DEBUG_MSG(boost::format("Entity::onRemoteMethodCall: entityID %1%, methodType %2%.\n") % 
-				id_ % utype);
+	if(g_debugEntity)
+	{
+		DEBUG_MSG(fmt::format("Entity::onRemoteMethodCall: entityID {}, methodType {}.\n", 
+				id_, utype));
+	}
 
 	PyObject* pyFunc = PyObject_GetAttrString(this, const_cast<char*>
 						(md->getName()));
@@ -186,17 +218,17 @@ void Entity::onUpdatePropertys(MemoryStream& s)
 
 	if(!scriptModule_->usePropertyDescrAlias())
 	{
-		Mercury::FixedMessages::MSGInfo* msgInfo =
-					Mercury::FixedMessages::getSingleton().isFixed("Property::position");
+		Network::FixedMessages::MSGInfo* msgInfo =
+					Network::FixedMessages::getSingleton().isFixed("Property::position");
 
 		if(msgInfo != NULL)
 			posuid = msgInfo->msgid;
 
-		msgInfo = Mercury::FixedMessages::getSingleton().isFixed("Property::direction");
+		msgInfo = Network::FixedMessages::getSingleton().isFixed("Property::direction");
 		if(msgInfo != NULL)
 			diruid = msgInfo->msgid;
 
-		msgInfo = Mercury::FixedMessages::getSingleton().isFixed("Property::spaceID");
+		msgInfo = Network::FixedMessages::getSingleton().isFixed("Property::spaceID");
 		if(msgInfo != NULL)
 			spaceuid = msgInfo->msgid;
 	}
@@ -207,7 +239,7 @@ void Entity::onUpdatePropertys(MemoryStream& s)
 		spaceuid = ENTITY_BASE_PROPERTY_ALIASID_SPACEID;
 	}
 
-	while(s.opsize() > 0)
+	while(s.length() > 0)
 	{
 		ENTITY_PROPERTY_UID uid;
 		uint8 aliasID = 0;
@@ -238,7 +270,7 @@ void Entity::onUpdatePropertys(MemoryStream& s)
 #else
 			s >> size >> pos.x >> pos.y >> pos.z;
 #endif
-			setPosition(pos);
+			position(pos);
 			continue;
 		}
 		else if(uid == diruid)
@@ -261,27 +293,27 @@ void Entity::onUpdatePropertys(MemoryStream& s)
 			dir.roll(roll);
 #endif
 
-			setDirection(dir);
+			direction(dir);
 			continue;
 		}
 		else if(uid == spaceuid)
 		{
-			SPACE_ID spaceID;
-			s >> spaceID;
-			setSpaceID(spaceID);
+			SPACE_ID ispaceID;
+			s >> ispaceID;
+			spaceID(ispaceID);
 			continue;
 		}
 
 		PropertyDescription* pPropertyDescription = NULL;
 		
 		if(scriptModule_->usePropertyDescrAlias())
-			pPropertyDescription = getScriptModule()->findAliasPropertyDescription(aliasID);
+			pPropertyDescription = scriptModule()->findAliasPropertyDescription(aliasID);
 		else
-			pPropertyDescription = getScriptModule()->findClientPropertyDescription(uid);
+			pPropertyDescription = scriptModule()->findClientPropertyDescription(uid);
 
 		if(pPropertyDescription == NULL)
 		{
-			ERROR_MSG(boost::format("Entity::onUpdatePropertys: not found %1%\n") % uid);
+			ERROR_MSG(fmt::format("Entity::onUpdatePropertys: not found {}\n", uid));
 			return;
 		}
 
@@ -303,7 +335,7 @@ void Entity::onUpdatePropertys(MemoryStream& s)
 }
 
 //-------------------------------------------------------------------------------------
-void Entity::writeToDB(void* data)
+void Entity::writeToDB(void* data, void* extra)
 {
 }
 
@@ -313,7 +345,7 @@ int Entity::pySetPosition(PyObject *value)
 	if(!script::ScriptVector3::check(value))
 		return -1;
 
-	script::ScriptVector3::convertPyObjectToVector3(getPosition(), value);
+	script::ScriptVector3::convertPyObjectToVector3(position(), value);
 	onPositionChanged();
 	return 0;
 }
@@ -321,13 +353,13 @@ int Entity::pySetPosition(PyObject *value)
 //-------------------------------------------------------------------------------------
 PyObject* Entity::pyGetPosition()
 {
-	return new script::ScriptVector3(&getPosition(), NULL);
+	return new script::ScriptVector3(&position(), NULL);
 }
 
 //-------------------------------------------------------------------------------------
 void Entity::onPositionChanged()
 {
-	if(pClientApp_->entityID() == this->getID())
+	if(pClientApp_->entityID() == this->id())
 		return;
 
 	EventData_PositionChanged eventdata;
@@ -336,7 +368,7 @@ void Entity::onPositionChanged()
 	eventdata.z = position_.z;
 	eventdata.speed = velocity_;
 	
-	eventdata.entityID = getID();
+	eventdata.entityID = id();
 
 	pClientApp_->fireEvent(&eventdata);
 }
@@ -359,7 +391,7 @@ int Entity::pySetDirection(PyObject *value)
 		return -1;
 	}
 
-	Direction3D& dir = getDirection();
+	Direction3D& dir = direction();
 	PyObject* pyItem = PySequence_GetItem(value, 0);
 	dir.roll(float(PyFloat_AsDouble(pyItem)));
 	Py_DECREF(pyItem);
@@ -377,20 +409,20 @@ int Entity::pySetDirection(PyObject *value)
 //-------------------------------------------------------------------------------------
 PyObject* Entity::pyGetDirection()
 {
-	return new script::ScriptVector3(&getDirection().dir, NULL);
+	return new script::ScriptVector3(&direction().dir, NULL);
 }
 
 //-------------------------------------------------------------------------------------
 void Entity::onDirectionChanged()
 {
-	if(pClientApp_->entityID() == this->getID())
+	if(pClientApp_->entityID() == this->id())
 		return;
 
 	EventData_DirectionChanged eventdata;
 	eventdata.yaw = direction_.yaw();
 	eventdata.pitch = direction_.pitch();
 	eventdata.roll = direction_.roll();
-	eventdata.entityID = getID();
+	eventdata.entityID = id();
 
 	pClientApp_->fireEvent(&eventdata);
 }
@@ -398,7 +430,7 @@ void Entity::onDirectionChanged()
 //-------------------------------------------------------------------------------------
 int Entity::pySetMoveSpeed(PyObject *value)
 {
-	setMoveSpeed((float)PyFloat_AsDouble(value));
+	moveSpeed((float)PyFloat_AsDouble(value));
 	return 0;
 }
 
@@ -413,7 +445,7 @@ void Entity::onMoveSpeedChanged()
 {
 	EventData_MoveSpeedChanged eventdata;
 	eventdata.speed = velocity_;
-	eventdata.entityID = getID();
+	eventdata.entityID = id();
 
 	pClientApp_->fireEvent(&eventdata);
 }
@@ -422,7 +454,7 @@ void Entity::onMoveSpeedChanged()
 void Entity::onEnterWorld()
 {
 	SCOPED_PROFILE(SCRIPTCALL_PROFILE);
-	enterword_ = true;
+	enterworld_ = true;
 	SCRIPT_OBJECT_CALL_ARGS0(this, const_cast<char*>("onEnterWorld"));
 }
 
@@ -430,7 +462,8 @@ void Entity::onEnterWorld()
 void Entity::onLeaveWorld()
 {
 	SCOPED_PROFILE(SCRIPTCALL_PROFILE);
-	enterword_ = false;
+	enterworld_ = false;
+	spaceID(0);
 	SCRIPT_OBJECT_CALL_ARGS0(this, const_cast<char*>("onLeaveWorld"));
 }
 
@@ -445,6 +478,7 @@ void Entity::onEnterSpace()
 void Entity::onLeaveSpace()
 {
 	SCOPED_PROFILE(SCRIPTCALL_PROFILE);
+	spaceID(0);
 	SCRIPT_OBJECT_CALL_ARGS0(this, const_cast<char*>("onLeaveSpace"));
 }
 
@@ -480,6 +514,7 @@ void Entity::onBecomePlayer()
 		if(pyClass == NULL)
 		{
 			SCRIPT_ERROR_CHECK();
+			ERROR_MSG(fmt::format("{}::onBecomePlayer(): please implement {}.\n", this->scriptModule_->getName(), moduleName));
 		}
 		else
 		{
@@ -497,11 +532,14 @@ void Entity::onBecomePlayer()
 //-------------------------------------------------------------------------------------
 void Entity::onBecomeNonPlayer()
 {
-	PyObject_SetAttrString(static_cast<PyObject*>(this), "__class__", (PyObject*)this->scriptModule_->getScriptType());
-	SCRIPT_ERROR_CHECK();
-
+	if(!enterworld_)
+		return;
+	
 	SCOPED_PROFILE(SCRIPTCALL_PROFILE);
 	SCRIPT_OBJECT_CALL_ARGS0(this, const_cast<char*>("onBecomeNonPlayer"));
+
+	PyObject_SetAttrString(static_cast<PyObject*>(this), "__class__", (PyObject*)this->scriptModule_->getScriptType());
+	SCRIPT_ERROR_CHECK();
 }
 
 //-------------------------------------------------------------------------------------

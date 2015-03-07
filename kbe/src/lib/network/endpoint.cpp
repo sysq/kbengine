@@ -19,13 +19,18 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "endpoint.hpp"
+#include "endpoint.h"
 #ifndef CODE_INLINE
-#include "endpoint.ipp"
+#include "endpoint.inl"
 #endif
 
+#include "network/bundle.h"
+#include "network/tcp_packet_receiver.h"
+#include "network/tcp_packet_sender.h"
+#include "network/udp_packet_receiver.h"
+
 namespace KBEngine { 
-namespace Mercury
+namespace Network
 {
 #ifdef unix
 #else	// not unix
@@ -57,7 +62,7 @@ namespace Mercury
 static bool g_networkInitted = false;
 
 //-------------------------------------------------------------------------------------
-static ObjectPool<EndPoint> _g_objPool;
+static ObjectPool<EndPoint> _g_objPool("EndPoint");
 ObjectPool<EndPoint>& EndPoint::ObjPool()
 {
 	return _g_objPool;
@@ -66,8 +71,8 @@ ObjectPool<EndPoint>& EndPoint::ObjPool()
 //-------------------------------------------------------------------------------------
 void EndPoint::destroyObjPool()
 {
-	DEBUG_MSG(boost::format("EndPoint::destroyObjPool(): size %1%.\n") % 
-		_g_objPool.size());
+	DEBUG_MSG(fmt::format("EndPoint::destroyObjPool(): size {}.\n", 
+		_g_objPool.size()));
 
 	_g_objPool.destroy();
 }
@@ -91,7 +96,7 @@ void EndPoint::onReclaimObject()
 }
 
 //-------------------------------------------------------------------------------------
-bool EndPoint::getClosedPort(Mercury::Address & closedPort)
+bool EndPoint::getClosedPort(Network::Address & closedPort)
 {
 	bool isResultSet = false;
 
@@ -185,7 +190,7 @@ bool EndPoint::getInterfaces(std::map< u_int32_t, std::string > &interfaces)
 				unsigned long addrs = *(unsigned long*)inaddrs->h_addr_list[count];
 				interfaces[addrs] = "eth0";
 				char *ip = inet_ntoa (*(struct in_addr *)inaddrs->h_addr_list[count]);
-				DEBUG_MSG(boost::format("EndPoint::getInterfaces: found eth0 %1%\n") % ip);
+				DEBUG_MSG(fmt::format("EndPoint::getInterfaces: found eth0 {}\n", ip));
 				++count;
 			}
 		}
@@ -205,10 +210,9 @@ bool EndPoint::getInterfaces(std::map< u_int32_t, std::string > &interfaces)
 		return false;
 	}
 
-	// Iterate through the list of interfaces.
 	struct ifreq * ifr         = ifc.ifc_req;
 	int nInterfaces = ifc.ifc_len / sizeof(struct ifreq);
-	for (int i = 0; i < nInterfaces; i++)
+	for (int i = 0; i < nInterfaces; ++i)
 	{
 		struct ifreq *item = &ifr[i];
 
@@ -234,6 +238,7 @@ int EndPoint::findDefaultInterface(char * name)
 	{
 		int		flags = 0;
 		struct if_nameindex* pIfInfoCur = pIfInfo;
+
 		while (pIfInfoCur->if_name)
 		{
 			flags = 0;
@@ -247,20 +252,22 @@ int EndPoint::findDefaultInterface(char * name)
 					strcpy(name, pIfInfoCur->if_name);
 					ret = 0;
 
-					// we only stop if it's not a loopback address,
-					// otherwise we continue, hoping to find a better one
+					// 如果不是回路地址我们就停止
+					// 否则我们期望找到更好的
 					if (!(flags & IFF_LOOPBACK)) break;
 				}
 			}
+
 			++pIfInfoCur;
 		}
+
 		if_freenameindex(pIfInfo);
 	}
 	else
 	{
-		ERROR_MSG(boost::format("EndPoint::findDefaultInterface: "
-							"if_nameindex returned NULL (%1%)\n") %
-						kbe_strerror());
+		ERROR_MSG(fmt::format("EndPoint::findDefaultInterface: "
+							"if_nameindex returned NULL ({})\n",
+						kbe_strerror()));
 	}
 
 	return ret;
@@ -270,63 +277,40 @@ int EndPoint::findDefaultInterface(char * name)
 //-------------------------------------------------------------------------------------
 int EndPoint::findIndicatedInterface(const char * spec, char * name)
 {
-	// start with it cleared
 	name[0] = 0;
 
-	// make sure there's something there
-	if (spec == NULL || spec[0] == 0) return -1;
+	if (spec == NULL || spec[0] == 0) 
+		return -1;
 
-	// set up some working vars
-	char * slash;
-	int netmaskbits = 32;
 	char iftemp[IFNAMSIZ+16];
-	strncpy(iftemp, spec, IFNAMSIZ); iftemp[IFNAMSIZ] = 0;
+
+	strncpy(iftemp, spec, IFNAMSIZ); 
+	iftemp[IFNAMSIZ] = 0;
 	u_int32_t addr = 0;
 
-	// see if it's a netmask
-	if ((slash = const_cast< char * >(strchr(spec, '/'))) && slash-spec <= 16)
+	// 尝试通过指定接口名称获得地址或尝试将接口名称转换为地址
+	if (this->getInterfaceAddress(iftemp, addr) == 0)
 	{
-		// specified a netmask
-		KBE_ASSERT(IFNAMSIZ >= 16);
-		iftemp[slash-spec] = 0;
-		bool ok = EndPoint::convertAddress(iftemp, addr) == 0;
-
-		netmaskbits = atoi(slash+1);
-		ok &= netmaskbits > 0 && netmaskbits <= 32;
-
-		if (!ok)
-		{
-			ERROR_MSG(boost::format("EndPoint::findIndicatedInterface: "
-				"netmask match %1% length %2% is not valid.\n") % iftemp % (slash+1));
-			return -1;
-		}
-	}
-	else if (this->getInterfaceAddress(iftemp, addr) == 0)
-	{
-		// specified name of interface
 		strncpy(name, iftemp, IFNAMSIZ);
 	}
 	else if (EndPoint::convertAddress(spec, addr) == 0)
 	{
-		// specified ip address
-		netmaskbits = 32; // redundant but instructive
 	}
 	else
 	{
-		ERROR_MSG(boost::format("EndPoint::findIndicatedInterface: "
-			"No interface matching interface spec '%1%' found\n") % spec);
+		ERROR_MSG(fmt::format("EndPoint::findIndicatedInterface: "
+			"No interface matching interface spec '{}' found\n", spec));
+
 		return -1;
 	}
 
-	// if we haven't set a name yet then we're supposed to
-	// look up the ip address
+	// 如果没有指定接口名，那么查找地址
 	if (name[0] == 0)
 	{
-		int netmaskshift = 32-netmaskbits;
 		u_int32_t netmaskmatch = ntohl(addr);
-
 		std::vector< std::string > interfaceNames;
 
+		// 列举所有网络接口名称
 		struct if_nameindex* pIfInfo = if_nameindex();
 		if (pIfInfo)
 		{
@@ -350,7 +334,7 @@ int EndPoint::findIndicatedInterface(const char * spec, char * name)
 			{
 				u_int32_t htip = ntohl(tip);
 
-				if ((htip >> netmaskshift) == (netmaskmatch >> netmaskshift))
+				if (htip == netmaskmatch)
 				{
 					//DEBUG_MSG("EndPoint::bind(): found a match\n");
 					strncpy(name, currName, IFNAMSIZ);
@@ -364,10 +348,10 @@ int EndPoint::findIndicatedInterface(const char * spec, char * name)
 		if (name[0] == 0)
 		{
 			uint8 * qik = (uint8*)&addr;
-			ERROR_MSG(boost::format("EndPoint::findIndicatedInterface: "
-				"No interface matching netmask spec '%1%' found "
-				"(evals to %2%.%3%.%4%.%5%/%6%)\n") % spec %
-				qik[0] % qik[1] % qik[2] % qik[3] % netmaskbits);
+			ERROR_MSG(fmt::format("EndPoint::findIndicatedInterface: "
+				"No interface matching netmask spec '{}' found "
+				"(evals to {}.{}.{}.{})\n", spec,
+				qik[0], qik[1], qik[2], qik[3]));
 
 			return -2; // parsing ok, just didn't match
 		}
@@ -381,11 +365,11 @@ int EndPoint::convertAddress(const char * string, u_int32_t & address)
 {
 	u_int32_t	trial;
 
-	#ifdef unix
+#ifdef unix
 	if (inet_aton(string, (struct in_addr*)&trial) != 0)
-	#else
+#else
 	if ((trial = inet_addr(string)) != INADDR_NONE)
-	#endif
+#endif
 		{
 			address = trial;
 			return 0;
@@ -415,10 +399,10 @@ int EndPoint::getBufferSize(int optname) const
 	if (rberr == 0 && rbargsize == sizeof(int))
 		return recvbuf;
 
-	ERROR_MSG(boost::format("EndPoint::getBufferSize: "
-		"Failed to read option %1%: %2%\n") %
-		(optname == SO_SNDBUF ? "SO_SNDBUF" : "SO_RCVBUF") %
-		kbe_strerror());
+	ERROR_MSG(fmt::format("EndPoint::getBufferSize: "
+		"Failed to read option {}: {}\n",
+		(optname == SO_SNDBUF ? "SO_SNDBUF" : "SO_RCVBUF"),
+		kbe_strerror()));
 
 	return -1;
 }
@@ -446,8 +430,8 @@ bool EndPoint::recvAll(void * gramData, int gramSize)
 			}
 			else
 			{
-				WARNING_MSG(boost::format("EndPoint::recvAll: Got error '%1%'\n") %
-					kbe_strerror());
+				WARNING_MSG(fmt::format("EndPoint::recvAll: Got error '{}'\n",
+					kbe_strerror()));
 			}
 
 			return false;
@@ -460,9 +444,9 @@ bool EndPoint::recvAll(void * gramData, int gramSize)
 }
 
 //-------------------------------------------------------------------------------------
-Mercury::Address EndPoint::getLocalAddress() const
+Network::Address EndPoint::getLocalAddress() const
 {
-	Mercury::Address addr(0, 0);
+	Network::Address addr(0, 0);
 
 	if (this->getlocaladdress((u_int16_t*)&addr.port,
 				(u_int32_t*)&addr.ip) == -1)
@@ -474,9 +458,9 @@ Mercury::Address EndPoint::getLocalAddress() const
 }
 
 //-------------------------------------------------------------------------------------
-Mercury::Address EndPoint::getRemoteAddress() const
+Network::Address EndPoint::getRemoteAddress() const
 {
-	Mercury::Address addr(0, 0);
+	Network::Address addr(0, 0);
 
 	if (this->getremoteaddress((u_int16_t*)&addr.port,
 				(u_int32_t*)&addr.ip) == -1)
@@ -510,6 +494,20 @@ bool EndPoint::waitSend()
 	FD_SET(socket_, &fds);
 
 	return select(socket_+1, NULL, &fds, NULL, &tv) > 0;
+}
+
+//-------------------------------------------------------------------------------------
+void EndPoint::send(Bundle * pBundle)
+{
+	//AUTO_SCOPED_PROFILE("sendBundle");
+	SEND_BUNDLE((*this), (*pBundle));
+}
+
+//-------------------------------------------------------------------------------------
+void EndPoint::sendto(Bundle * pBundle, u_int16_t networkPort, u_int32_t networkAddr)
+{
+	//AUTO_SCOPED_PROFILE("sendBundle");
+	SENDTO_BUNDLE((*this), networkAddr, networkPort, (*pBundle));
 }
 
 //-------------------------------------------------------------------------------------

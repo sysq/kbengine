@@ -18,10 +18,10 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "baseapp.hpp"
-#include "proxy.hpp"
-#include "proxy_forwarder.hpp"
-#include "server/serverconfig.hpp"
+#include "baseapp.h"
+#include "proxy.h"
+#include "proxy_forwarder.h"
+#include "server/serverconfig.h"
 
 namespace KBEngine{	
 
@@ -29,7 +29,7 @@ namespace KBEngine{
 ProxyForwarder::ProxyForwarder(Proxy * pProxy) : 
 pProxy_(pProxy)
 {
-	timerHandle_ = Baseapp::getSingleton().getMainDispatcher().addTimer(1000000 / g_kbeSrvConfig.gameUpdateHertz(), this,
+	timerHandle_ = Baseapp::getSingleton().dispatcher().addTimer(1000000 / g_kbeSrvConfig.gameUpdateHertz(), this,
 							NULL);
 }
 

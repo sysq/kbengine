@@ -18,12 +18,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "network/event_dispatcher.hpp"
-#include "network/event_poller.hpp"
-#include "py_file_descriptor.hpp"
-#include "baseapp.hpp"
-#include "helper/debug_helper.hpp"
-#include "pyscript/pyobject_pointer.hpp"
+#include "network/event_dispatcher.h"
+#include "network/event_poller.h"
+#include "py_file_descriptor.h"
+#include "baseapp.h"
+#include "helper/debug_helper.h"
+#include "pyscript/pyobject_pointer.h"
 
 namespace KBEngine{
 
@@ -34,26 +34,26 @@ PyFileDescriptor::PyFileDescriptor(int fd, PyObject* pyCallback, bool write) :
 	write_(write)
 {
 	if(write)
-		Baseapp::getSingleton().getNetworkInterface().dispatcher().registerWriteFileDescriptor(fd_, this);
+		Baseapp::getSingleton().networkInterface().dispatcher().registerWriteFileDescriptor(fd_, this);
 	else
-		Baseapp::getSingleton().getNetworkInterface().dispatcher().registerFileDescriptor(fd_, this);
+		Baseapp::getSingleton().networkInterface().dispatcher().registerReadFileDescriptor(fd_, this);
 }
 
 //-------------------------------------------------------------------------------------
 PyFileDescriptor::~PyFileDescriptor()
 {
 	if(write_)
-		Baseapp::getSingleton().getNetworkInterface().dispatcher().deregisterWriteFileDescriptor(fd_);
+		Baseapp::getSingleton().networkInterface().dispatcher().deregisterWriteFileDescriptor(fd_);
 	else
-		Baseapp::getSingleton().getNetworkInterface().dispatcher().deregisterFileDescriptor(fd_);
+		Baseapp::getSingleton().networkInterface().dispatcher().deregisterReadFileDescriptor(fd_);
 }
 
 //-------------------------------------------------------------------------------------
-PyObject* PyFileDescriptor::__py_registerFileDescriptor(PyObject* self, PyObject* args)
+PyObject* PyFileDescriptor::__py_registerReadFileDescriptor(PyObject* self, PyObject* args)
 {
 	if(PyTuple_Size(args) != 2)
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: args != (fileDescriptor, callback)!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::registerReadFileDescriptor: args != (fileDescriptor, callback)!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
@@ -63,21 +63,21 @@ PyObject* PyFileDescriptor::__py_registerFileDescriptor(PyObject* self, PyObject
 
 	if(PyArg_ParseTuple(args, "i|O", &fd, &pycallback) == -1)
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: args is error!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::registerReadFileDescriptor: args is error!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
 	
 	if(fd <= 0)
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: fd <= 0!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::registerReadFileDescriptor: fd <= 0!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
 
 	if(!PyCallable_Check(pycallback))
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: invalid pycallback!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::registerReadFileDescriptor: invalid pycallback!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
@@ -87,11 +87,11 @@ PyObject* PyFileDescriptor::__py_registerFileDescriptor(PyObject* self, PyObject
 }
 
 //-------------------------------------------------------------------------------------
-PyObject* PyFileDescriptor::__py_deregisterFileDescriptor(PyObject* self, PyObject* args)
+PyObject* PyFileDescriptor::__py_deregisterReadFileDescriptor(PyObject* self, PyObject* args)
 {
 	if(PyTuple_Size(args) != 1)
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: args != (fileDescriptor)!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::deregisterReadFileDescriptor: args != (fileDescriptor)!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
@@ -100,20 +100,20 @@ PyObject* PyFileDescriptor::__py_deregisterFileDescriptor(PyObject* self, PyObje
 
 	if(PyArg_ParseTuple(args, "i", &fd) == -1)
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: args is error!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::deregisterReadFileDescriptor: args is error!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
 	
 	if(fd <= 0)
 	{
-		PyErr_Format(PyExc_TypeError, "KBEngine::registerFileDescriptor: fd <= 0!");
+		PyErr_Format(PyExc_TypeError, "KBEngine::deregisterReadFileDescriptor: fd <= 0!");
 		PyErr_PrintEx(0);
 		return NULL;
 	}
 
 	PyFileDescriptor* pPyFileDescriptor = 
-		static_cast<PyFileDescriptor*>(Baseapp::getSingleton().getNetworkInterface().dispatcher().pPoller()->find(fd, true));
+		static_cast<PyFileDescriptor*>(Baseapp::getSingleton().networkInterface().dispatcher().pPoller()->findForRead(fd));
 
 	if(pPyFileDescriptor)
 		delete pPyFileDescriptor;
@@ -186,7 +186,7 @@ PyObject* PyFileDescriptor::__py_deregisterWriteFileDescriptor(PyObject* self, P
 	}
 
 	PyFileDescriptor* pPyFileDescriptor = 
-		static_cast<PyFileDescriptor*>(Baseapp::getSingleton().getNetworkInterface().dispatcher().pPoller()->find(fd, false));
+		static_cast<PyFileDescriptor*>(Baseapp::getSingleton().networkInterface().dispatcher().pPoller()->findForWrite(fd));
 
 	if(pPyFileDescriptor)
 		delete pPyFileDescriptor;
@@ -197,8 +197,18 @@ PyObject* PyFileDescriptor::__py_deregisterWriteFileDescriptor(PyObject* self, P
 //-------------------------------------------------------------------------------------
 int PyFileDescriptor::handleInputNotification(int fd)
 {
-	INFO_MSG(boost::format("PyFileDescriptor:handleInputNotification: fd = %1%\n") %
-				fd );
+	INFO_MSG(fmt::format("PyFileDescriptor:handleInputNotification: fd = {}\n",
+				fd));
+
+	callback();
+	return 0;
+}
+
+//-------------------------------------------------------------------------------------
+int PyFileDescriptor::handleOutputNotification( int fd )
+{
+	INFO_MSG(fmt::format("PyFileDescriptor:handleOutputNotification: fd = {}\n",
+				fd));
 
 	callback();
 	return 0;
@@ -220,7 +230,7 @@ void PyFileDescriptor::callback()
 	}
 	else
 	{
-		ERROR_MSG(boost::format("PyFileDescriptor::callback: can't found callback:%1%.\n") % fd_);
+		ERROR_MSG(fmt::format("PyFileDescriptor::callback: can't found callback:{}.\n", fd_));
 	}
 }
 

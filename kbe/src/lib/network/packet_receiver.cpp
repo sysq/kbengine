@@ -19,20 +19,21 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "packet_receiver.hpp"
+#include "packet_receiver.h"
 #ifndef CODE_INLINE
-#include "packet_receiver.ipp"
+#include "packet_receiver.inl"
 #endif
 
-#include "network/address.hpp"
-#include "network/bundle.hpp"
-#include "network/channel.hpp"
-#include "network/endpoint.hpp"
-#include "network/event_dispatcher.hpp"
-#include "network/network_interface.hpp"
-#include "network/event_poller.hpp"
+#include "network/address.h"
+#include "network/bundle.h"
+#include "network/channel.h"
+#include "network/endpoint.h"
+#include "network/event_dispatcher.h"
+#include "network/network_interface.h"
+#include "network/event_poller.h"
+
 namespace KBEngine { 
-namespace Mercury
+namespace Network
 {
 //-------------------------------------------------------------------------------------
 PacketReceiver::PacketReceiver() :
@@ -57,9 +58,9 @@ PacketReceiver::~PacketReceiver()
 //-------------------------------------------------------------------------------------
 int PacketReceiver::handleInputNotification(int fd)
 {
-	if (this->processSocket(/*expectingPacket:*/true))
+	if (this->processRecv(/*expectingPacket:*/true))
 	{
-		while (this->processSocket(/*expectingPacket:*/false))
+		while (this->processRecv(/*expectingPacket:*/false))
 		{
 			/* pass */;
 		}
@@ -73,7 +74,7 @@ Reason PacketReceiver::processPacket(Channel* pChannel, Packet * pPacket)
 {
 	if (pChannel != NULL)
 	{
-		pChannel->onPacketReceived(pPacket->totalSize());
+		pChannel->onPacketReceived(pPacket->length());
 
 		if (pChannel->pFilter())
 		{
@@ -88,6 +89,12 @@ Reason PacketReceiver::processPacket(Channel* pChannel, Packet * pPacket)
 EventDispatcher & PacketReceiver::dispatcher()
 {
 	return this->pNetworkInterface_->dispatcher();
+}
+
+//-------------------------------------------------------------------------------------
+Channel* PacketReceiver::getChannel()
+{
+	return pNetworkInterface_->findChannel(pEndpoint_->addr());
 }
 
 //-------------------------------------------------------------------------------------

@@ -19,24 +19,24 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "bundle_broadcast.hpp"
+#include "bundle_broadcast.h"
 #ifndef CODE_INLINE
-#include "bundle_broadcast.ipp"
+#include "bundle_broadcast.inl"
 #endif
 
-#include "network/address.hpp"
-#include "network/event_dispatcher.hpp"
-#include "network/network_interface.hpp"
-#include "network/event_poller.hpp"
+#include "network/address.h"
+#include "network/event_dispatcher.h"
+#include "network/network_interface.h"
+#include "network/event_poller.h"
 
 
 namespace KBEngine { 
-namespace Mercury
+namespace Network
 {
 //-------------------------------------------------------------------------------------
 BundleBroadcast::BundleBroadcast(NetworkInterface & networkInterface, 
 								   uint16 bindPort, uint32 recvWindowSize):
-	Bundle(NULL, Mercury::PROTOCOL_UDP),
+	Bundle(NULL, Network::PROTOCOL_UDP),
 	epListen_(),
 	networkInterface_(networkInterface),
 	recvWindowSize_(recvWindowSize),
@@ -48,10 +48,10 @@ BundleBroadcast::BundleBroadcast(NetworkInterface & networkInterface,
 
 	if (!epListen_.good() || !epBroadcast_.good())
 	{
-		ERROR_MSG(boost::format("BundleBroadcast::BundleBroadcast: init socket is error, %1%\n") % 
-			kbe_strerror());
+		ERROR_MSG(fmt::format("BundleBroadcast::BundleBroadcast: init socket is error, {}\n", 
+			kbe_strerror()));
 
-		networkInterface_.mainDispatcher().breakProcessing();
+		networkInterface_.dispatcher().breakProcessing();
 	}
 	else
 	{
@@ -62,15 +62,14 @@ BundleBroadcast::BundleBroadcast(NetworkInterface & networkInterface,
 			if (epListen_.bind(htons(bindPort), htonl(INADDR_ANY)) != 0)
 			{
 				good_ = false;
-
-				WARNING_MSG(boost::format("BundleBroadcast::BundleBroadcast: Couldn't bind listener socket to port %1%, %2%\n") %
-					bindPort % kbe_strerror());
-				
-				KBEngine::sleep(100);
+				KBEngine::sleep(10);
 				count++;
 
-				if(count > 3)
+				if(count > 30)
 				{
+					WARNING_MSG(fmt::format("BundleBroadcast::BundleBroadcast: Couldn't bind listener socket to port {}, {}\n",
+						bindPort, kbe_strerror()));
+
 					break;
 				}
 			}
@@ -79,11 +78,13 @@ BundleBroadcast::BundleBroadcast(NetworkInterface & networkInterface,
 				epListen_.addr(htons(bindPort), htonl(INADDR_ANY));
 				good_ = true;
 
-				// DEBUG_MSG(boost::format("BundleBroadcast::BundleBroadcast: epListen %1%\n") % epListen_.c_str());
+				// DEBUG_MSG(fmt::format("BundleBroadcast::BundleBroadcast: epListen {}\n", epListen_.c_str()));
 				break;
 			}
 		}
 	}
+
+	pCurrPacket()->data_resize(recvWindowSize_);
 }
 
 //-------------------------------------------------------------------------------------
@@ -115,18 +116,18 @@ bool BundleBroadcast::broadcast(uint16 port)
 	if(port == 0)
 		port = KBE_MACHINE_BRAODCAST_SEND_PORT;
 
-	epBroadcast_.addr(port, Mercury::BROADCAST);
+	epBroadcast_.addr(port, Network::BROADCAST);
 
 	if(epBroadcast_.setbroadcast(true) != 0)
 	{
-		ERROR_MSG(boost::format("BundleBroadcast::broadcast: Couldn't broadcast socket, port %1%, %2%\n") % 
-			port % kbe_strerror());
+		ERROR_MSG(fmt::format("BundleBroadcast::broadcast: Couldn't broadcast socket, port {}, {}\n", 
+			port, kbe_strerror()));
 
-		networkInterface_.mainDispatcher().breakProcessing();
+		networkInterface_.dispatcher().breakProcessing();
 		return false;
 	}
 
-	this->sendto(epBroadcast_, htons(port), Mercury::BROADCAST);
+	epBroadcast_.sendto(this, htons(port), Network::BROADCAST);
 	return true;
 }
 
@@ -165,8 +166,8 @@ bool BundleBroadcast::receive(MessageArgs* recvArgs, sockaddr_in* psin, int32 ti
 			}
 			else
 			{
-				DEBUG_MSG(boost::format("BundleBroadcast::receive: retries(%1%), bind_addr(%2%) ...\n") % 
-					icount % epListen_.addr());
+				//DEBUG_MSG(fmt::format("BundleBroadcast::receive: retries({}), bind_addr({}) ...\n", 
+				//	icount, epListen_.addr()));
 			}
 
 			icount++;
@@ -176,8 +177,8 @@ bool BundleBroadcast::receive(MessageArgs* recvArgs, sockaddr_in* psin, int32 ti
 		{
 			if(showerr)
 			{
-				ERROR_MSG(boost::format("BundleBroadcast::receive: select error. %1%.\n") %
-						kbe_strerror());
+				ERROR_MSG(fmt::format("BundleBroadcast::receive: select error. {}.\n",
+						kbe_strerror()));
 			}
 			return false;
 		}
@@ -189,19 +190,21 @@ bool BundleBroadcast::receive(MessageArgs* recvArgs, sockaddr_in* psin, int32 ti
 			if(psin == NULL)
 				psin = &sin;
 
+			pCurrPacket()->data_resize(recvWindowSize_);
+
 			int len = epListen_.recvfrom(pCurrPacket()->data(), recvWindowSize_, *psin);
 			if (len == -1)
 			{
 				if(showerr)
 				{
-					ERROR_MSG(boost::format("BundleBroadcast::receive: recvfrom error. %1%.\n") %
-							kbe_strerror());
+					ERROR_MSG(fmt::format("BundleBroadcast::receive: recvfrom error. {}.\n",
+							kbe_strerror()));
 				}
 				continue;
 			}
 			
-			//DEBUG_MSG(boost::format("BundleBroadcast::receive: from %1%, datalen=%2%.\n") % 
-			//	inet_ntoa((struct in_addr&)psin->sin_addr.s_addr) % len);
+			//DEBUG_MSG(fmt::format("BundleBroadcast::receive: from {}, datalen={}.\n", 
+			//	inet_ntoa((struct in_addr&)psin->sin_addr.s_addr), len));
 
 			pCurrPacket()->wpos(len);
 
@@ -212,8 +215,8 @@ bool BundleBroadcast::receive(MessageArgs* recvArgs, sockaddr_in* psin, int32 ti
 					recvArgs->createFromStream(*pCurrPacket());
 				}catch(MemoryStreamException &)
 				{
-					ERROR_MSG(boost::format("BundleBroadcast::receive: data is error. size=%1%.\n") %
-							len);
+					ERROR_MSG(fmt::format("BundleBroadcast::receive: data is error. size={}.\n",
+							len));
 
 					continue;
 				}

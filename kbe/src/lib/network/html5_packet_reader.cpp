@@ -18,13 +18,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "html5_packet_reader.hpp"
-#include "network/channel.hpp"
-#include "network/message_handler.hpp"
-#include "network/mercurystats.hpp"
+#include "html5_packet_reader.h"
+#include "network/channel.h"
+#include "network/message_handler.h"
+#include "network/network_stats.h"
 
 namespace KBEngine { 
-namespace Mercury
+namespace Network
 {
 
 
@@ -46,7 +46,7 @@ void HTML5PacketReader::reset()
 }
 
 //-------------------------------------------------------------------------------------
-void HTML5PacketReader::processMessages(KBEngine::Mercury::MessageHandlers* pMsgHandlers, Packet* pPacket)
+void HTML5PacketReader::processMessages(KBEngine::Network::MessageHandlers* pMsgHandlers, Packet* pPacket)
 {
 	PacketReader::processMessages(pMsgHandlers, pPacket);
 }

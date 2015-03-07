@@ -26,16 +26,14 @@ CELLAPP_TYPE			= 5
 BASEAPP_TYPE			= 6
 CLIENT_TYPE				= 7
 MACHINE_TYPE			= 8
-CENTER_TYPE				= 9
-CONSOLE_TYPE			= 10
-MESSAGELOG_TYPE			= 11
-RESOURCEMGR_TYPE		= 12
-BOTS_TYPE				= 13
-WATCHER_TYPE			= 14
-BILLING_TYPE			= 15
+CONSOLE_TYPE			= 9
+LOGGER_TYPE				= 10
+BOTS_TYPE				= 11
+WATCHER_TYPE			= 12
+INTERFACES_TYPE			= 13
 COMPONENT_END_TYPE		= 16
 
-# ת
+# ComponentName to type
 COMPONENT_NAME2TYPE = {
 	"unknown"		: UNKNOWN_COMPONENT_TYPE,
 	"dbmgr"			: DBMGR_TYPE,
@@ -45,18 +43,15 @@ COMPONENT_NAME2TYPE = {
 	"cellapp" 		: CELLAPP_TYPE,
 	"baseapp" 		: BASEAPP_TYPE,
 	"client" 		: CLIENT_TYPE,
-	"kbmachine"		: MACHINE_TYPE,
-	"kbcenter" 		: CENTER_TYPE,
+	"machine"		: MACHINE_TYPE,
 	"console" 		: CONSOLE_TYPE,
-	"messagelog" 	: MESSAGELOG_TYPE,
-	"resourcemgr"	: RESOURCEMGR_TYPE,
+	"logger" 		: LOGGER_TYPE,
 	"bots" 			: BOTS_TYPE,
 	"watcher" 		: WATCHER_TYPE,
-	"billing" 		: BILLING_TYPE,
-	"billingsystem" : BILLING_TYPE
+	"interfaces" 	: INTERFACES_TYPE,
 }
 
-#  
+# Component name
 COMPONENT_NAME = (
 	"unknown",
 	"dbmgr",
@@ -66,17 +61,24 @@ COMPONENT_NAME = (
 	"cellapp",
 	"baseapp",
 	"client",
-	"kbmachine",
-	"kbcenter",
+	"machine",
 	"console",
-	"messagelog",
-	"resourcemgr",
+	"logger",
 	"bots",
 	"watcher",
-	"billing",
+	"interfaces",
 )
 
-
+# No shutdown
+NO_SHUTDOWN_COMPONENTS = (
+	"interfaces",
+	"watcher",
+	"bots",
+	"logger",
+	"console",
+	"machine",
+	"client",
+)
 
 class ClusterControllerHandler:
 	def __init__(self):
@@ -113,7 +115,7 @@ class ClusterControllerHandler:
 		while(dectrycount > 0):
 			try:
 				dectrycount = trycount
-				recvdata, address = self.udp_socket.recvfrom(4096)
+				recvdata, address = self.udp_socket.recvfrom(10240)
 				self.recvDatas.append(recvdata)
 				#print ("received %r from %r" % (self.recvDatas, address))
 			except socket.timeout: 
@@ -174,17 +176,17 @@ class ClusterControllerHandler:
                                 
 			ii += 1
 
-			componentType = struct.unpack("B", self.recvDatas[count][ii : ii + 1])[0]
-			ii += 1
+			componentType = struct.unpack("i", self.recvDatas[count][ii : ii + 4])[0]
+			ii += 4
 			
 			componentID = struct.unpack("Q", self.recvDatas[count][ii : ii + 8])[0]
 			ii += 16
-			
-			globalorderid = struct.unpack("B", self.recvDatas[count][ii : ii + 1])[0]
-			ii += 1
-		
-			grouporderid = struct.unpack("B", self.recvDatas[count][ii : ii + 1])[0]
-			ii += 1
+
+			globalorderid = struct.unpack("i", self.recvDatas[count][ii : ii + 4])[0]
+			ii += 4
+
+			grouporderid = struct.unpack("i", self.recvDatas[count][ii : ii + 4])[0]
+			ii += 4
 
 			intaddr = struct.unpack("I", self.recvDatas[count][ii : ii + 4])[0]
 			ii += 4
@@ -198,6 +200,24 @@ class ClusterControllerHandler:
 			extport = struct.unpack("H", self.recvDatas[count][ii : ii + 2])[0]
 			ii += 2
 			
+			# get extaddrEx
+			i1 = ii
+			for x in self.recvDatas[count][ii:]:
+				if type(x) == str:
+					if ord(x) == 0:
+						break
+				else:
+					if x == 0:
+						break
+
+				ii += 1
+
+			extaddrEx = self.recvDatas[count][i1: ii];
+			if type(extaddrEx) == 'bytes':
+				extaddrEx = extaddrEx.decode()
+                                
+			ii += 1
+
 			pid = struct.unpack("I", self.recvDatas[count][ii : ii + 4])[0]
 			ii += 4
 			
@@ -228,6 +248,12 @@ class ClusterControllerHandler:
 			extradata3 = struct.unpack("Q", self.recvDatas[count][ii : ii + 8])[0]
 			ii += 8
 			
+			backaddr = struct.unpack("I", self.recvDatas[count][ii : ii + 4])[0]
+			ii += 4
+
+			backport = struct.unpack("H", self.recvDatas[count][ii : ii + 2])[0]
+			ii += 2
+			
 			#print("%s, uid=%i, cID=%i, gid=%i, groupid=%i, uname=%s" % (COMPONENT_NAME[componentType], \
 			#	uid, componentID, globalorderid, grouporderid, username))
 			
@@ -244,7 +270,7 @@ class ClusterControllerHandler:
 			
 			if not found:
 				componentInfos.append((uid, componentID, globalorderid, grouporderid, username, cpu, mem, usedmem, 0, \
-									intaddr, intport, extaddr, extport, pid, machineID, state, componentType, extradata, extradata1, extradata2, extradata3))
+									intaddr, intport, extaddr, extport, pid, machineID, state, componentType, extradata, extradata1, extradata2, extradata3, extaddrEx))
 				
 			count += 1
 		
@@ -275,6 +301,7 @@ class ClusterConsoleHandler(ClusterControllerHandler):
 		
 	def do(self):
 		self._interfaces_groups = {}
+		print("finding(" + self.consoleType  + ")...")
 		self.queryAllInterfaces()
 		interfaces = self._interfaces
 		
@@ -284,10 +311,13 @@ class ClusterConsoleHandler(ClusterControllerHandler):
 				info = infos.pop(0)
 
 			for info in infos:
-				if COMPONENT_NAME[info[16]] + str(info[3]) == self.consoleType:
+				if COMPONENT_NAME[info[16]] + str(info[3]) == self.consoleType or \
+					COMPONENT_NAME[info[16]] + str("%02d" %(info[3])) == self.consoleType:
 					os.system('telnet %s %i' % (socket.inet_ntoa(struct.pack('I', info[9])), info[20]))
-					
-
+					return
+		
+		print("not found " + self.consoleType  + "!")
+		
 class ClusterQueryHandler(ClusterControllerHandler):
 	def __init__(self, uid):
 		ClusterControllerHandler.__init__(self)
@@ -448,9 +478,10 @@ class ClusterStopHandler(ClusterControllerHandler):
 		print("online-components:")
 		printed = []
 		for ctype in self.startTemplate:
-			if ctype not in COMPONENT_NAME2TYPE or ctype == "kbmachine":
-				if(ctype != "kbmachine"):
+			if ctype not in COMPONENT_NAME2TYPE or ctype in NO_SHUTDOWN_COMPONENTS:
+				if(ctype not in NO_SHUTDOWN_COMPONENTS):
 					print("not found %s, stop failed!" % ctype)
+					
 				continue
 			
 			infos = interfaces.get(COMPONENT_NAME2TYPE[ctype], [])
@@ -492,7 +523,7 @@ class ClusterStopHandler(ClusterControllerHandler):
 			
 			waitcount = 0
 			for ctype in interfacesCount:
-				if ctype not in COMPONENT_NAME2TYPE or ctype not in self.startTemplate or ctype == "kbmachine":
+				if ctype not in COMPONENT_NAME2TYPE or ctype not in self.startTemplate or ctype == "machine":
 					continue
 			
 				infos = self._interfaces.get(COMPONENT_NAME2TYPE[ctype], [])
@@ -592,6 +623,20 @@ if __name__ == "__main__":
 			if uid < 0:
 				uid = getDefaultUID()
 				
+			clusterHandler = ClusterStopHandler(uid, templatestr)
+		elif cmdType == "shutdown":
+			templatestr = ""
+			uid = -1
+			
+			if len(sys.argv) >= 3:
+				if sys.argv[2].isdigit():
+					uid = sys.argv[2]
+
+			uid = int(uid)
+			if uid < 0:
+				uid = getDefaultUID()
+			
+			NO_SHUTDOWN_COMPONENTS = []
 			clusterHandler = ClusterStopHandler(uid, templatestr)
 		elif cmdType == "console":
 			consoleType = ""

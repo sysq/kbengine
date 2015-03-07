@@ -18,12 +18,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "config.hpp"
-#include "script_callbacks.hpp"
-#include "server/serverapp.hpp"
-#include "pyscript/script.hpp"
-#include "pyscript/pyobject_pointer.hpp"
-#include "cstdkbe/smartpointer.hpp"
+#include "config.h"
+#include "script_callbacks.h"
+#include "server/serverapp.h"
+#include "server/serverconfig.h"
+#include "pyscript/script.h"
+#include "pyscript/pyobject_pointer.h"
+#include "common/smartpointer.h"
 
 namespace KBEngine
 {
@@ -47,13 +48,18 @@ ScriptID ScriptCallbacks::addCallback( float initialOffset, TimerHandler * pHand
 {
 	if (initialOffset < 0.f)
 	{
-		WARNING_MSG(boost::format("ScriptCallbacks::addTimer: Negative timer offset (%1%)\n") %
-				initialOffset );
+		WARNING_MSG(fmt::format("ScriptCallbacks::addTimer: Negative timer offset ({})\n",
+				initialOffset));
 
 		initialOffset = 0.f;
 	}
 
-	int hertz = Config::getSingleton().gameUpdateHertz();
+	int hertz = 0;
+	
+	if(g_componentType == BOTS_TYPE)
+		hertz = g_kbeSrvConfig.gameUpdateHertz();
+	else
+		hertz = Config::getSingleton().gameUpdateHertz();
 
 	int initialTicks = GameTime( g_kbetime +
 			initialOffset * hertz );
@@ -169,6 +175,8 @@ ScriptCallbacks::Map::const_iterator ScriptCallbacks::findCallback(TimerHandle h
 //-------------------------------------------------------------------------------------
 void ScriptCallbackHandler::handleTimeout( TimerHandle handle, void * pUser )
 {
+	AUTO_SCOPED_PROFILE("callCallbacks");
+
 	//int id = scriptCallbacks_.getIDForHandle(handle);
 
 	PyObject * pObject = pObject_;

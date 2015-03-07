@@ -18,22 +18,22 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "cellapp.hpp"
-#include "witness.hpp"
-#include "entityref.hpp"
-#include "client_entity.hpp"
-#include "helper/debug_helper.hpp"
-#include "network/packet.hpp"
-#include "network/bundle.hpp"
-#include "network/network_interface.hpp"
-#include "server/components.hpp"
-#include "client_lib/client_interface.hpp"
-#include "entitydef/method.hpp"
-#include "entitydef/scriptdef_module.hpp"
-#include "client_entity_method.hpp"
+#include "cellapp.h"
+#include "witness.h"
+#include "entityref.h"
+#include "client_entity.h"
+#include "helper/debug_helper.h"
+#include "network/packet.h"
+#include "network/bundle.h"
+#include "network/network_interface.h"
+#include "server/components.h"
+#include "client_lib/client_interface.h"
+#include "entitydef/method.h"
+#include "entitydef/scriptdef_module.h"
+#include "client_entity_method.h"
 
-#include "../../server/baseapp/baseapp_interface.hpp"
-#include "../../server/cellapp/cellapp_interface.hpp"
+#include "../../server/baseapp/baseapp_interface.h"
+#include "../../server/cellapp/cellapp_interface.h"
 
 namespace KBEngine{
 
@@ -87,7 +87,7 @@ PyObject* ClientEntity::onScriptGetAttribute(PyObject* attr)
 	if(srcEntity->pWitness() == NULL)
 	{
 		PyErr_Format(PyExc_AssertionError, "%s::clientEntity: no client, srcEntityID(%d).\n",		
-			srcEntity->getScriptName(), srcEntity->getID());		
+			srcEntity->scriptName(), srcEntity->id());		
 		PyErr_PrintEx(0);
 		return 0;
 	}
@@ -95,7 +95,7 @@ PyObject* ClientEntity::onScriptGetAttribute(PyObject* attr)
 	EntityRef::AOI_ENTITIES::iterator iter = srcEntity->pWitness()->aoiEntities().begin();
 	Entity* e = NULL;
 
-	for(; iter != srcEntity->pWitness()->aoiEntities().end(); iter++)
+	for(; iter != srcEntity->pWitness()->aoiEntities().end(); ++iter)
 	{
 		if((*iter)->id() == clientEntityID_ && ((*iter)->flags() & ENTITYREF_FLAG_ENTER_CLIENT_PENDING) <= 0)
 		{
@@ -107,7 +107,7 @@ PyObject* ClientEntity::onScriptGetAttribute(PyObject* attr)
 	if(e == NULL)
 	{
 		PyErr_Format(PyExc_AssertionError, "%s::clientEntity: not found entity(%d), srcEntityID(%d).\n",		
-			srcEntity->getScriptName(), clientEntityID_, srcEntity->getID());		
+			srcEntity->scriptName(), clientEntityID_, srcEntity->id());		
 		PyErr_PrintEx(0);
 		return 0;
 	}
@@ -116,7 +116,7 @@ PyObject* ClientEntity::onScriptGetAttribute(PyObject* attr)
 	char* ccattr = strutil::wchar2char(PyUnicode_AsWideCharStringRet0);
 	PyMem_Free(PyUnicode_AsWideCharStringRet0);
 
-	MethodDescription* md = const_cast<ScriptDefModule*>(e->getScriptModule())->findClientMethodDescription(ccattr);
+	MethodDescription* md = const_cast<ScriptDefModule*>(e->scriptModule())->findClientMethodDescription(ccattr);
 	free(ccattr);
 
 	if(md != NULL)

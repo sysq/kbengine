@@ -18,12 +18,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "idallocate.hpp"
-#include "serverapp.hpp"
-#include "components.hpp"
-#include "helper/debug_helper.hpp"
-#include "server/serverconfig.hpp"
-#include "../../server/dbmgr/dbmgr_interface.hpp"
+#include "idallocate.h"
+#include "serverapp.h"
+#include "components.h"
+#include "helper/debug_helper.h"
+#include "server/serverconfig.h"
+#include "../../server/dbmgr/dbmgr_interface.h"
 
 namespace KBEngine{
 
@@ -55,7 +55,7 @@ void EntityIDClient::onAlloc(void)
 	if(hasReqServerAlloc())
 		return;
 
-	Mercury::Channel* pChannel = Components::getSingleton().getDbmgrChannel();
+	Network::Channel* pChannel = Components::getSingleton().getDbmgrChannel();
 
 	if(pChannel == NULL)
 	{
@@ -63,15 +63,14 @@ void EntityIDClient::onAlloc(void)
 		return;
 	}
 
-	Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
+	Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
 	(*pBundle).newMessage(DbmgrInterface::onReqAllocEntityID);
 	DbmgrInterface::onReqAllocEntityIDArgs2::staticAddToBundle((*pBundle), pApp_->componentType(), pApp_->componentID());
-	(*pBundle).send(pApp_->getNetworkInterface(), pChannel);
-	Mercury::Bundle::ObjPool().reclaimObject(pBundle);
+	pChannel->send(pBundle);
 
 	setReqServerAllocFlag(true);
 
-	WARNING_MSG(boost::format("EntityIDClient::onAlloc: not enough(%1%) entityIDs!\n") % id_enough_limit);
+	WARNING_MSG(fmt::format("EntityIDClient::onAlloc: not enough({}) entityIDs!\n", id_enough_limit));
 }
 
 //-------------------------------------------------------------------------------------

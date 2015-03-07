@@ -19,12 +19,12 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "address.hpp"
-#include "endpoint.hpp"
-#include "helper/debug_helper.hpp"
+#include "address.h"
+#include "endpoint.h"
+#include "helper/debug_helper.h"
 
 namespace KBEngine { 
-namespace Mercury
+namespace Network
 {
 char Address::s_stringBuf[2][32] = {{0},{0}};
 
@@ -33,7 +33,7 @@ const Address Address::NONE(0, 0);
 
 
 //-------------------------------------------------------------------------------------
-static ObjectPool<Address> _g_objPool;
+static ObjectPool<Address> _g_objPool("Address");
 ObjectPool<Address>& Address::ObjPool()
 {
 	return _g_objPool;
@@ -42,8 +42,8 @@ ObjectPool<Address>& Address::ObjPool()
 //-------------------------------------------------------------------------------------
 void Address::destroyObjPool()
 {
-	DEBUG_MSG(boost::format("Address::destroyObjPool(): size %1%.\n") % 
-		_g_objPool.size());
+	DEBUG_MSG(fmt::format("Address::destroyObjPool(): size {}.\n",
+		_g_objPool.size()));
 
 	_g_objPool.destroy();
 }
@@ -67,7 +67,7 @@ ip(0),
 	port(htons(portArg))
 {
 	u_int32_t addr;
-	Mercury::EndPoint::convertAddress(ipArg.c_str(), addr);
+	Network::EndPoint::convertAddress(ipArg.c_str(), addr);
 	ip = (uint32)addr;
 } 
 

@@ -18,9 +18,9 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "baseapp.hpp"
-#include "archiver.hpp"
-#include "base.hpp"
+#include "baseapp.h"
+#include "archiver.h"
+#include "base.h"
 
 namespace KBEngine{	
 
@@ -73,7 +73,7 @@ void Archiver::tick()
 //-------------------------------------------------------------------------------------
 void Archiver::archive(Base& base)
 {
-	base.writeToDB(NULL);
+	base.writeToDB(NULL, NULL);
 
 	if(base.shouldAutoArchive() == KBE_NEXT_ONLY)
 		base.shouldAutoArchive(0);
@@ -87,7 +87,7 @@ void Archiver::createArchiveTable()
 
 	Entities<Base>::ENTITYS_MAP::const_iterator iter = Baseapp::getSingleton().pEntities()->getEntities().begin();
 
-	for(; iter != Baseapp::getSingleton().pEntities()->getEntities().end(); iter++)
+	for(; iter != Baseapp::getSingleton().pEntities()->getEntities().end(); ++iter)
 	{
 		Base* pBase = static_cast<Base*>(iter->second.get());
 

@@ -18,12 +18,12 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "space.hpp"	
-#include "spaces.hpp"	
-#include "loadnavmesh_threadtasks.hpp"
-#include "server/serverconfig.hpp"
-#include "cstdkbe/deadline.hpp"
-#include "navigation/navigation.hpp"
+#include "space.h"	
+#include "spaces.h"	
+#include "loadnavmesh_threadtasks.h"
+#include "server/serverconfig.h"
+#include "common/deadline.h"
+#include "navigation/navigation.h"
 
 namespace KBEngine{
 
@@ -42,8 +42,8 @@ thread::TPTask::TPTaskState LoadNavmeshTask::presentMainThread()
 	Space* pSpace = Spaces::findSpace(spaceID_);
 	if(pSpace == NULL)
 	{
-		ERROR_MSG(boost::format("LoadNavmeshTask::presentMainThread(): not found space(%1%)\n") % 
-			spaceID_);
+		ERROR_MSG(fmt::format("LoadNavmeshTask::presentMainThread(): not found space({})\n",
+			spaceID_));
 	}
 	else
 	{

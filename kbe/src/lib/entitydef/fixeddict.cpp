@@ -18,8 +18,9 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "fixeddict.hpp"
-#include "datatypes.hpp"
+#include "fixeddict.h"
+#include "datatypes.h"
+#include "pyscript/py_gc.h"
 
 namespace KBEngine{ 
 
@@ -31,13 +32,28 @@ PyMappingMethods FixedDict::mappingMethods =
 	(objobjargproc)FixedDict::mp_ass_subscript		// mp_ass_subscript
 };
 
+// ²Î¿¼ objects/dictobject.c
+// Hack to implement "key in dict"
+PySequenceMethods FixedDict::mappingSequenceMethods = 
+{
+    0,											/* sq_length */
+    0,											/* sq_concat */
+    0,											/* sq_repeat */
+    0,											/* sq_item */
+    0,											/* sq_slice */
+    0,											/* sq_ass_item */
+    0,											/* sq_ass_slice */
+    PyMapping_HasKey,							/* sq_contains */
+    0,											/* sq_inplace_concat */
+    0,											/* sq_inplace_repeat */
+};
 
 SCRIPT_METHOD_DECLARE_BEGIN(FixedDict)
-SCRIPT_METHOD_DECLARE("__reduce_ex__",	reduce_ex__,		METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("has_key",		has_key,			METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("keys",			keys,				METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("values",			values,				METH_VARARGS, 0)
-SCRIPT_METHOD_DECLARE("items",			items,				METH_VARARGS, 0)
+SCRIPT_METHOD_DECLARE("__reduce_ex__",				reduce_ex__,			METH_VARARGS,		0)
+SCRIPT_METHOD_DECLARE("has_key",					has_key,				METH_VARARGS,		0)
+SCRIPT_METHOD_DECLARE("keys",						keys,					METH_VARARGS,		0)
+SCRIPT_METHOD_DECLARE("values",						values,					METH_VARARGS,		0)
+SCRIPT_METHOD_DECLARE("items",						items,					METH_VARARGS,		0)
 SCRIPT_METHOD_DECLARE_END()
 
 
@@ -46,7 +62,7 @@ SCRIPT_MEMBER_DECLARE_END()
 
 SCRIPT_GETSET_DECLARE_BEGIN(FixedDict)
 SCRIPT_GETSET_DECLARE_END()
-SCRIPT_INIT(FixedDict, 0, 0, &FixedDict::mappingMethods, 0, 0)	
+SCRIPT_INIT(FixedDict, 0, &FixedDict::mappingSequenceMethods, &FixedDict::mappingMethods, 0, 0)	
 	
 //-------------------------------------------------------------------------------------
 FixedDict::FixedDict(DataType* dataType, std::string& strDictInitData):
@@ -56,8 +72,10 @@ Map(getScriptType(), false)
 	_dataType->incRef();
 	initialize(strDictInitData);
 
-//	DEBUG_MSG(boost::format("FixedDict::FixedDict(1): %1%---%2%\n") % this %
-//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL)));
+	script::PyGC::incTracing("FixedDict");
+
+//	DEBUG_MSG(fmt::format("FixedDict::FixedDict(1): {:p}---{}\n", (void*)this,
+//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL))));
 }
 
 //-------------------------------------------------------------------------------------
@@ -68,8 +86,10 @@ Map(getScriptType(), false)
 	_dataType->incRef();
 	initialize(pyDictInitData);
 
-//	DEBUG_MSG(boost::format("FixedDict::FixedDict(2): %1%---%2%\n") % this % 
-//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL)));
+	script::PyGC::incTracing("FixedDict");
+
+//	DEBUG_MSG(fmt::format("FixedDict::FixedDict(2): {:p}---{}\n", (void*)this,
+//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL))));
 }
 
 //-------------------------------------------------------------------------------------
@@ -80,8 +100,10 @@ Map(getScriptType(), false)
 	_dataType->incRef();
 	initialize(streamInitData, isPersistentsStream);
 	
-//	DEBUG_MSG(boost::format("FixedDict::FixedDict(3): %1%---%2%\n") % this % 
-//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL)));
+	script::PyGC::incTracing("FixedDict");
+
+//	DEBUG_MSG(fmt::format("FixedDict::FixedDict(3): {:p}---{}\n", (void*)this,
+//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL))));
 }
 
 //-------------------------------------------------------------------------------------
@@ -92,8 +114,10 @@ Map(getScriptType(), false)
 	_dataType->incRef();
 	initialize("");
 
-//	DEBUG_MSG(boost::format("FixedDict::FixedDict(4): %1%---%2%\n") % this % 
-//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL)));
+	script::PyGC::incTracing("FixedDict");
+
+//	DEBUG_MSG(fmt::format("FixedDict::FixedDict(4): {:p}---{}\n", (void*)this,
+//		wchar2char(PyUnicode_AsWideCharString(PyObject_Str(getDictObject()), NULL))));
 }
 
 
@@ -101,8 +125,9 @@ Map(getScriptType(), false)
 FixedDict::~FixedDict()
 {
 	_dataType->decRef();
+	script::PyGC::decTracing("FixedDict");
 
-//	DEBUG_MSG(boost::format("FixedDict::~FixedDict(): %1%\n") % this);
+//	DEBUG_MSG(fmt::format("FixedDict::~FixedDict(): {:p}\n", (void*)this);
 }
 
 //-------------------------------------------------------------------------------------
@@ -110,7 +135,7 @@ void FixedDict::initialize(std::string strDictInitData)
 {
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP& keyTypes = _dataType->getKeyTypes();
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP::iterator iter = keyTypes.begin();
-	for(; iter != keyTypes.end(); iter++)
+	for(; iter != keyTypes.end(); ++iter)
 	{
 		PyObject* pyobj = iter->second->dataType->parseDefaultStr("");
 		if(pyobj)
@@ -119,8 +144,8 @@ void FixedDict::initialize(std::string strDictInitData)
 		}
 		else
 		{
-			ERROR_MSG(boost::format("FixedDict::initialize: is error! strDictInitData=%1%.\n") %
-				strDictInitData.c_str());
+			ERROR_MSG(fmt::format("FixedDict::initialize: is error! strDictInitData={}.\n",
+				strDictInitData.c_str()));
 		}
 	}
 }
@@ -140,7 +165,7 @@ void FixedDict::initialize(MemoryStream* streamInitData, bool isPersistentsStrea
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP& keyTypes = _dataType->getKeyTypes();
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP::const_iterator iter = keyTypes.begin();
 
-	for(; iter != keyTypes.end(); iter++)
+	for(; iter != keyTypes.end(); ++iter)
 	{
 		if(isPersistentsStream && !iter->second->persistent)
 		{
@@ -267,7 +292,7 @@ bool FixedDict::checkDataChanged(const char* keyName, PyObject* value, bool isDe
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP& keyTypes = _dataType->getKeyTypes();
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP::const_iterator iter = keyTypes.begin();
 	
-	for(; iter != keyTypes.end(); iter++)
+	for(; iter != keyTypes.end(); ++iter)
 	{
 		if((*iter).first == keyName)
 		{
@@ -317,7 +342,7 @@ PyObject* FixedDict::update(PyObject* args)
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP& keyTypes = _dataType->getKeyTypes();
 	FixedDictType::FIXEDDICT_KEYTYPE_MAP::const_iterator iter = keyTypes.begin();
 
-	for(; iter != keyTypes.end(); iter++)
+	for(; iter != keyTypes.end(); ++iter)
 	{
 		PyObject* val = PyDict_GetItemString(args, iter->first.c_str());
 		if(val)
@@ -332,6 +357,18 @@ PyObject* FixedDict::update(PyObject* args)
 
 	S_Return; 
 }
-	
+
+//-------------------------------------------------------------------------------------
+PyObject* FixedDict::tp_str()
+{
+	return tp_repr();
+}
+
+//-------------------------------------------------------------------------------------
+PyObject* FixedDict::tp_repr()
+{
+	return PyObject_Repr(pyDict_);
+}
+
 //-------------------------------------------------------------------------------------
 }

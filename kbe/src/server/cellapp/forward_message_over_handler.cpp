@@ -18,13 +18,13 @@ You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "cellapp.hpp"
-#include "forward_message_over_handler.hpp"
-#include "entitydef/entities.hpp"
-#include "cstdkbe/memorystream.hpp"
-#include "entity.hpp"
-#include "space.hpp"
-#include "spaces.hpp"
+#include "cellapp.h"
+#include "forward_message_over_handler.h"
+#include "entitydef/entities.h"
+#include "common/memorystream.h"
+#include "entity.h"
+#include "space.h"
+#include "spaces.h"
 
 namespace KBEngine{	
 
@@ -38,6 +38,13 @@ params_(params)
 }
 
 //-------------------------------------------------------------------------------------
+FMH_Baseapp_onEntityGetCellFrom_onCreateInNewSpaceFromBaseapp::~FMH_Baseapp_onEntityGetCellFrom_onCreateInNewSpaceFromBaseapp()
+{
+	if(params_)
+		Py_XDECREF(params_);
+}
+
+//-------------------------------------------------------------------------------------
 void FMH_Baseapp_onEntityGetCellFrom_onCreateInNewSpaceFromBaseapp::process()
 {
 	KBE_ASSERT(_e != NULL);
@@ -46,15 +53,16 @@ void FMH_Baseapp_onEntityGetCellFrom_onCreateInNewSpaceFromBaseapp::process()
 	
 	if(space == NULL)
 	{
-		ERROR_MSG(boost::format("FMH_Baseapp_onEntityGetCell::process: not found space(%1%), %2% %3%.\n") %
-			_spaceID % _e->getScriptName() % _e->getID());
+		ERROR_MSG(fmt::format("FMH_Baseapp_onEntityGetCell::process: not found space({}), {} {}.\n",
+			_spaceID, _e->scriptName(), _e->id()));
 
 		return;
 	}
 
-	_e->setSpaceID(space->getID());
+	_e->spaceID(space->id());
 	_e->initializeEntity(params_);
 	Py_XDECREF(params_);
+	params_ = NULL;
 
 	// Ìí¼Óµ½space
 	space->addEntityAndEnterWorld(_e);
@@ -77,12 +85,19 @@ _inRescore(inRescore)
 }
 
 //-------------------------------------------------------------------------------------
+FMH_Baseapp_onEntityGetCellFrom_onCreateCellEntityFromBaseapp::~FMH_Baseapp_onEntityGetCellFrom_onCreateCellEntityFromBaseapp()
+{
+	SAFE_RELEASE(_pCellData);
+}
+
+//-------------------------------------------------------------------------------------
 void FMH_Baseapp_onEntityGetCellFrom_onCreateCellEntityFromBaseapp::process()
 {
 	Cellapp::getSingleton()._onCreateCellEntityFromBaseapp(_entityType, _createToEntityID, _entityID, 
 		_pCellData, _hasClient, _inRescore, _componentID, _spaceID);
 
 	MemoryStream::ObjPool().reclaimObject(_pCellData);
+	_pCellData = NULL;
 }
 
 //-------------------------------------------------------------------------------------

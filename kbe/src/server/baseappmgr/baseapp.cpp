@@ -17,7 +17,7 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
-#include "baseapp.hpp"
+#include "baseapp.h"
 
 namespace KBEngine{
 
@@ -27,7 +27,8 @@ numBases_(0),
 numProxices_(0),
 load_(0.f),
 isDestroyed_(false),
-watchers_()
+watchers_(),
+initProgress_(0.f)
 {
 }
 

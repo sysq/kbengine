@@ -17,12 +17,12 @@ GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License
 along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
-#include "globaldata_client.hpp"
-#include "components.hpp"
-#include "serverapp.hpp"
-#include "network/channel.hpp"
+#include "globaldata_client.h"
+#include "components.h"
+#include "serverapp.h"
+#include "network/channel.h"
 
-#include "../../server/dbmgr/dbmgr_interface.hpp"
+#include "../../server/dbmgr/dbmgr_interface.h"
 
 namespace KBEngine{ 
 
@@ -59,8 +59,8 @@ bool GlobalDataClient::write(PyObject* pyKey, PyObject* pyValue)
 	{
 		if (PyDict_SetItem(pyDict_, pyKey, pyValue) == -1)
 		{
-			ERROR_MSG(boost::format("Map::write: is eror! key=%1%, val=%2%\n") % 
-				PyBytes_AsString(pyKey) % PyBytes_AsString(pyValue));
+			ERROR_MSG(fmt::format("Map::write: is eror! key={}, val={}\n", 
+				PyBytes_AsString(pyKey), PyBytes_AsString(pyValue)));
 		}
 		else
 		{
@@ -69,8 +69,8 @@ bool GlobalDataClient::write(PyObject* pyKey, PyObject* pyValue)
 	}
 	else
 	{
-		ERROR_MSG(boost::format("Map::write:unpickle is error. key=%1%, val=%2%\n") %
-			PyBytes_AsString(pyKey) % PyBytes_AsString(pyValue));
+		ERROR_MSG(fmt::format("Map::write:unpickle is error. key={}, val={}\n",
+			PyBytes_AsString(pyKey), PyBytes_AsString(pyValue)));
 
 		PyErr_Print();
 	}
@@ -89,7 +89,7 @@ bool GlobalDataClient::del(PyObject* pyKey)
 	{
 		if (PyDict_GetItem(pyDict_, pyKey) && PyDict_DelItem(pyDict_, pyKey) == -1)
 		{
-			ERROR_MSG(boost::format("Map::del: delete key is failed! key=%1%.\n") % PyBytes_AsString(pyKey));
+			ERROR_MSG(fmt::format("Map::del: delete key is failed! key={}.\n", PyBytes_AsString(pyKey)));
 			PyErr_Clear();
 		}
 		else
@@ -100,7 +100,7 @@ bool GlobalDataClient::del(PyObject* pyKey)
 	}
 	else
 	{
-		ERROR_MSG(boost::format("Map::del: delete key is error! key=%1%.\n") % PyBytes_AsString(pyKey));
+		ERROR_MSG(fmt::format("Map::del: delete key is error! key={}.\n", PyBytes_AsString(pyKey)));
 		PyErr_Print();
 	}
 
@@ -108,40 +108,45 @@ bool GlobalDataClient::del(PyObject* pyKey)
 }
 
 //-------------------------------------------------------------------------------------
-void GlobalDataClient::onDataChanged(std::string& key, std::string& value, bool isDelete)
+void GlobalDataClient::onDataChanged(PyObject* key, PyObject* value, bool isDelete)
 {
+	std::string skey = script::Pickler::pickle(key, 0);
+	std::string sval = "";
+
+	if(value)
+		sval = script::Pickler::pickle(value, 0);
+
 	Components::COMPONENTS& channels = Components::getSingleton().getComponents(serverComponentType_);
 	Components::COMPONENTS::iterator iter1 = channels.begin();
 	uint8 dataType = dataType_;
 	ArraySize slen = 0;
 
-	for(; iter1 != channels.end(); iter1++)
+	for(; iter1 != channels.end(); ++iter1)
 	{
-		Mercury::Channel* lpChannel = iter1->pChannel;
+		Network::Channel* lpChannel = iter1->pChannel;
 		KBE_ASSERT(lpChannel != NULL);
 		
-		Mercury::Bundle* pBundle = Mercury::Bundle::ObjPool().createObject();
+		Network::Bundle* pBundle = Network::Bundle::ObjPool().createObject();
 		
 		(*pBundle).newMessage(DbmgrInterface::onBroadcastGlobalDataChanged);
 		
 		(*pBundle) << dataType;
 		(*pBundle) << isDelete;
 
-		slen = key.size();
+		slen = skey.size();
 		(*pBundle) << slen;
-		(*pBundle).assign(key.data(), slen);
+		(*pBundle).assign(skey.data(), slen);
 
 		if(!isDelete)
 		{
-			slen = value.size();
+			slen = sval.size();
 			(*pBundle) << slen;
-			(*pBundle).assign(value.data(), slen);
+			(*pBundle).assign(sval.data(), slen);
 		}
 
 		(*pBundle) << g_componentType;
 
-		(*pBundle).send(lpChannel->networkInterface(), lpChannel);
-		Mercury::Bundle::ObjPool().reclaimObject(pBundle);
+		lpChannel->send(pBundle);
 	}
 }
 

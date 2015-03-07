@@ -19,14 +19,15 @@ along with KBEngine.  If not, see <http://www.gnu.org/licenses/>.
 */
 
 
-#include "entity_mailbox.hpp"
-#include "scriptdef_module.hpp"
-#include "helper/debug_helper.hpp"
-#include "network/channel.hpp"	
-#include "pyscript/pickler.hpp"
-#include "entitydef/method.hpp"
-#include "remote_entity_method.hpp"
-#include "entitydef/entitydef.hpp"
+#include "entity_mailbox.h"
+#include "scriptdef_module.h"
+#include "helper/debug_helper.h"
+#include "network/channel.h"	
+#include "pyscript/pickler.h"
+#include "pyscript/py_gc.h"
+#include "entitydef/method.h"
+#include "remote_entity_method.h"
+#include "entitydef/entitydef.h"
 
 namespace KBEngine
 {
@@ -49,7 +50,7 @@ SCRIPT_INIT(EntityMailbox, 0, 0, 0, 0, 0)
 
 //-------------------------------------------------------------------------------------
 EntityMailbox::EntityMailbox(ScriptDefModule* scriptModule, 
-							 const Mercury::Address* pAddr, 
+							 const Network::Address* pAddr, 
 							 COMPONENT_ID componentID, 
 ENTITY_ID eid, ENTITY_MAILBOX_TYPE type):
 EntityMailboxAbstract(getScriptType(),
@@ -63,6 +64,8 @@ atIdx_(MAILBOXS::size_type(-1))
 {
 	atIdx_ = EntityMailbox::mailboxs.size();
 	EntityMailbox::mailboxs.push_back(this);
+
+	script::PyGC::incTracing("EntityMailbox");
 }
 
 //-------------------------------------------------------------------------------------
@@ -71,7 +74,7 @@ EntityMailbox::~EntityMailbox()
 	char s[1024];
 	c_str(s, 1024);
 
-	//DEBUG_MSG(boost::format("EntityMailbox::~EntityMailbox(): %1%.\n") % s);
+	//DEBUG_MSG(fmt::format("EntityMailbox::~EntityMailbox(): {}.\n", s));
 
 	KBE_ASSERT(atIdx_ < EntityMailbox::mailboxs.size());
 	KBE_ASSERT(EntityMailbox::mailboxs[ atIdx_ ] == this);
@@ -82,6 +85,8 @@ EntityMailbox::~EntityMailbox()
 	EntityMailbox::mailboxs[atIdx_] = pBack;
 	atIdx_ = MAILBOXS::size_type(-1);
 	EntityMailbox::mailboxs.pop_back();
+
+	script::PyGC::decTracing("EntityMailbox");
 }
 
 //-------------------------------------------------------------------------------------
@@ -212,18 +217,24 @@ void EntityMailbox::c_str(char* s, size_t size)
 		(type_ == MAILBOX_TYPE_CELL_VIA_BASE)		? "CellViaBase" :
 		(type_ == MAILBOX_TYPE_CLIENT_VIA_BASE)		? "ClientViaBase" : "???";
 	
-	Mercury::Channel* pChannel = getChannel();
+	Network::Channel* pChannel = getChannel();
 
 	kbe_snprintf(s, size, "%s id:%d, utype:%u, component=%s[%"PRIu64"], addr: %s.", 
 		mailboxName, id_,  utype_,
 		COMPONENT_NAME_EX(ENTITY_MAILBOX_COMPONENT_TYPE_MAPPING[type_]), 
-		componentID_, (pChannel) ? pChannel->addr().c_str() : "None");
+		componentID_, (pChannel && pChannel->pEndPoint()) ? pChannel->addr().c_str() : "None");
 }
 
 //-------------------------------------------------------------------------------------
 PyObject* EntityMailbox::tp_str()
 {
 	return tp_repr();
+}
+
+//-------------------------------------------------------------------------------------
+PyObject* EntityMailbox::tryGetEntity(COMPONENT_ID componentID, ENTITY_ID entityID)
+{
+	return __getEntityFunc(componentID, entityID);
 }
 
 //-------------------------------------------------------------------------------------
@@ -250,13 +261,13 @@ PyObject* EntityMailbox::__unpickle__(PyObject* self, PyObject* args)
 	ScriptDefModule* sm = EntityDef::findScriptModule(utype);
 	if(sm == NULL)
 	{
-		ERROR_MSG(boost::format("EntityMailbox::__unpickle__: not found utype %1%!\n") % utype);
+		ERROR_MSG(fmt::format("EntityMailbox::__unpickle__: not found utype {}!\n", utype));
 		S_Return;
 	}
 
 	// COMPONENT_TYPE componentType = ENTITY_MAILBOX_COMPONENT_TYPE_MAPPING[(ENTITY_MAILBOX_TYPE)type];
 	
-	PyObject* entity = __getEntityFunc(componentID, eid);
+	PyObject* entity = tryGetEntity(componentID, eid);
 	if(entity != NULL)
 	{
 		Py_INCREF(entity);
@@ -279,8 +290,11 @@ void EntityMailbox::onInstallScript(PyObject* mod)
 }
 
 //-------------------------------------------------------------------------------------
-Mercury::Channel* EntityMailbox::getChannel(void)
+Network::Channel* EntityMailbox::getChannel(void)
 {
+	if(__findChannelFunc == NULL)
+		return NULL;
+
 	return __findChannelFunc(*this);
 }
 
